@@ -1,74 +1,82 @@
 library(doParallel)
-# Compute the pseudolikelihood for two sets of observations (RTs and responses)
-# for a two-choice task (obs.rt.1 and obs.rt.2, where the length of each set is
-# the number of each responses.
+# Compute the pseudolikelihood for difference of accumulators though time
 # The likelihood is computed from an estimated density constructed from a
 # simulated data set data.mx.
-# The data set data.mx is an Nx2 matrix, where data.mx[,1] are the RTs and
-# data.mx[,2] are the responses (1, -1).
-pseudolikelihood <- function(data.mx, obs.rt.1, obs.rt.2, log=TRUE) {
-    # Compute the number of each response
-    n.1 <- min(0,sum(data.mx[,2]==1))
-    n.2 <- min(0,sum(data.mx[,2]==-1))
-
-    # Initialize the likelihood vectors to -750 (so the default likelihood
-    # value is exp(-750) which is approximately zero.
-    like.1 <- rep(-750,times=length(obs.rt.1))
-    like.2 <- rep(-750,times=length(obs.rt.2))
-    lp.1 <- lp.2 <- -750
-
-    # If there are sufficient observations to construct a density estimate
-    # (2 or more), compute the likelihoods for each response.
-    if(n.1>1) {
-        lp.1 <- log(n.1/(n.1+n.2)) # log the proportion of responses = 1
-	# Compute the kernel density estimate
-        dens.1 <- density(data.mx[data.mx[,2]==1,1],kernel="epanechnikov",
-	                  from=0)
-        # Convert it to a function
-        func.1 <- approxfun(dens.1$x,dens.1$y,rule=2)
-	# Use the function to compute the likelihood of the observed RTs
-        like.1 <- log(func.1(obs.rt.1))
-	# If there are any zeros, convert the log to -750
-        like.1[like.1==-Inf] <- -750
-        }
-
-    # See notes for response = 1 above
-    if(n.2>1) {
-        lp.2 <- log(n.2/(n.1+n.2))
-        dens.2 <- density(data.mx[data.mx[,2]==-1,1],kernel="epanechnikov",from=0)
-        func.2 <- approxfun(dens.2$x,dens.2$y,rule=2)
-        like.2 <- log(func.2(obs.rt.2))
-        like.2[like.2==-Inf] <- -750
-        }
-    # Add likelihood components together.  Note the proportion terms that
-    # rescale the conditional likelihoods to joints.
-    like <- sum(like.1)+sum(like.2)+n.1*lp.1+n.2*lp.2
-
-    # Convert from log back to likelihood if necessary and return
-    if (log==FALSE) like <- exp(like)
-    return(like)
+# The data set data.mx is an Nxtime matrix, where dimension 1 are the simulated
+# data from this proposal of theta* and dimenstion 2 is the state of the difference
+# of the accumulators at time i
+pseudolikelihood <- function(data.mx, obs.data, log=TRUE) {
+  # Initialize the likelihood vectors to -750 for length of time
+  # (so the default likelihood value is exp(-750) which is 
+  # approximately zero).
+  like <- rep(-750,times=length(obs.data))
+  
+  # Compute the likelihood at each time point i
+  for(i in 1:length(obs.data)){
+    # Compute the kernel density estimate
+    dens.1 <- density(data.mx[,i], kernel="epanechnikov",
+                      from=0)
+    # Convert it to a function
+    func.1 <- approxfun(dens.1$x,dens.1$y,rule=2)
+    # Use the function to compute the likelihood of the observed RTs
+    like[i] <- log(func.1(obs.data[i]))
+  }
+  # If there are any zeros, convert the log to -750
+  like[like==-Inf] <- -750
+  
+  # Add log likelihood components together.  Note the proportion terms that
+  # rescale the conditional likelihoods to joints.
+  like <- sum(like)
+  
+  # Convert from log back to likelihood if necessary and return
+  if (log==FALSE) like <- exp(like)
+  return(like)
 }    
 
+# Wrapper function to us in sampler
+# I like to make mine so that it always takes 
+# Theta* and data 
 get_log_dens=function(params, data){
-  simData=foreach(i = 1:(n.obs/10), .combine = rbind, .export = c("rdmc"), .packages = c("dqrng")) %dopar% {
-   out=rdmc(10, A=as.numeric(params["A"]), tau=as.numeric(params["tau"]), mu.c=as.numeric(params["mu.c"]),
-       sigma=1, b.1=as.numeric(params["b.1"]), t.max=1000)
-   out
-  }
-  sum(pseudolikelihood(data.mx=simData, 
-                       obs.rt.1=data$rt1, 
-                       obs.rt.2=data$rt2))
+  # Check that proposal is finite
+  if(all(is.finite(params))){
+    # Container for simulated data
+    sim.data=array(NA, dim=c(n.obs,length(obs.data)))
+    # Simulate datasets for Pseudolike in Parallel
+    sim.data=foreach(i=1:n.obs, .combine = rbind, 
+                     .export = c("rlcca", "true","drift"), 
+                     .packages = c("dqrng"))%dopar%{
+                       # Simulate one trial
+                       temp=rlcca(n.items = true$n.items[1], max.time = true$maxtime[1], startx = true$startx, 
+                                  drift = drift, K = params['K'], L = params['L'], eta = true$eta[1], dt = true$dt[1],
+                                  tau = true$tau[1], t0 = params['t0'])
+                       # return difference
+                       temp[,1]-temp[,2]
+                     }
+    # Return pseudolike of observed data under simulated prosposed data
+    return(pseudolikelihood(data.mx=sim.data,
+                         obs.data=obs.data))
+  }else{return(-Inf) # If not finite, return worse density possible
+    }
 }
 
+# Sample a "prior" distribution of the varaible in model
+  # Essentially, this is how likely you think that parameters are
 samplePrior=function(){
-  A=log(rnorm(1,3,1))
-  tau=log(rnorm(1,4,1))
-  mu.c=log(rnorm(1,.5,.1))
-  b.1=log(rnorm(1,4,1))
-  out=tibble(A, tau, mu.c, b.1)
+  # Use log tranform because these will later be eponentiated
+  # This is fairly "tight" which makes the Initialization easier
+  L=log(rnorm(1,.4,1))  # Leak
+  K=log(rnorm(1,.1,1))  # Inhibition
+  t0=log(rnorm(1,.2,.1))# NonDecision time
+  out=tibble(L,K,t0)
 }
 
+# Compute density under a "prior" distribution of the varaible in model
+# Essentially, this is how likely you think that parameters are
 prior=function(params){
-  prior=max(dnorm(exp(params["A"]),3,1,log=TRUE),-750)+max(dnorm(exp(params["tau"]),4,1,log=TRUE),-750)+
-    max(dnorm(exp(params["mu.c"]),.5,.1,log=TRUE),-750)+max(dnorm(exp(params["b.1"]),4,1,log=TRUE),-750)
+  # Note that these are the same distribution as above
+  # the exponentiation is used to cancel the log transform to calculate
+  # the density under the prior distribution
+  prior=max(dnorm(exp(params["L"]),.4,1,log=TRUE),-750)+
+    max(dnorm(exp(params["K"]),.1,1,log=TRUE),-750)+
+    max(dnorm(exp(params["t0"]),.2,.1,log=TRUE),-750)
 }

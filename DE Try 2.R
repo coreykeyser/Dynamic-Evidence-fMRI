@@ -1,3 +1,4 @@
+# This Migration step is adapted from Brandon's code
 migration=function(current_chains,density,log.dens,data, params){
   pars=dim(current_chains)[2]
   lnum1=sample(c(1:K),1)										# determine how many groups to work with
@@ -30,46 +31,75 @@ migration=function(current_chains,density,log.dens,data, params){
   list(weight=density,theta=current_chains)
 }
 
+# Initialize a set of Thetas that have a real density under the data
+# These Thetas at least somewhat explain the data
+# Theta is a Kxn.paramsxN tensor
+  # K = number of chains run in parallel
+  # n.params =  number of freely estimated parameters in the model
+  # N = number of samples in total (burnin samples + posterior)
+# Denisty is a KxN matrix that describes how well its respective 
+# theta vector fits the data
+# log.dens.like = log of the likelihood function
+  # describes how well the Theta* described the data
+# data = observed data
+# params = names of params to be fit
 initializeChain = function(Theta, K, density, log.dens.like, data, params){
   for(k in 1:K){
+    # Initialize the density to worse possible descripiton of data
     density[k,1]=-Inf
+    # Break loop after the Theta* somewhat describe the data
     while(!is.finite(density[k,1])){
-      Theta[k,params,1]=as.numeric(samplePrior()[params])+runif(1)
+      # Sample from Prior distribution to propose theta vector
+      Theta[k,params,1]=as.numeric(samplePrior()[params])
+      # Compute density of theta*
       density[k,1]=log.dens.like(params = Theta[k,params,1], data)
     }
   }
+  # Return Theta Tensor and density matrix
   list("Theta"=Theta, "density"=density)
 }  
 
-BURNIN=function(N, n.params, K, Theta, log.dens.like, data, prior, mig_prob, params){
+# This function makes better theta*s from the distribution of theta*s
+# mig_prob = how likely theta*s are to go into a shuffling process
+BURNIN=function(N, n.params, K, Theta, log.dens.like, data, prior, 
+                mig_prob, params){
   for(i in 2:N){
-    # Specify gamma
-    # gamma=runif(1,.5,1)
     if(mig_prob > runif(1)){
-      mig=migration(Theta[,,i-1], density[,i-1], log.dens = log.dens.like, data, params)
+      mig=migration(Theta[,,i-1], density[,i-1], log.dens = log.dens.like, 
+                    data, params)
       density[,i-1]=mig$weight
       Theta[,,i-1]=mig$theta
     }
+    # Specify gamma
+    # How much of a  jump that the process takes
+    # gamma=runif(1,.5,1)
     gamma=2.38/sqrt(2*n.params)
     if(i%%10==0){gamma=1}
+    # determine which theta* was the best for the last generation
     best=which.max(density[,i-1])[1]
     for(k in 1:K){
-      # sample theta m and n
+      # sample theta m and n theta*s
       mn=sample(setdiff(1:K,k),2,F)
-      # sample Eps
+      # sample Eps Noise of the process
       eps=runif(1, -.01, .01)
       # propose theta.star
+      # Current theta + jump*(difference between 2 other thetas)
+      # + jump*(difference between best and current theta)
+      # + noise
       theta.star = Theta[k,,i-1] + 
         gamma*(Theta[mn[1],,i-1]-
                  Theta[mn[2],,i-1])+gamma*(Theta[k,,i-1]-Theta[best,,i-1])
         eps
-      # sample alpha
+      # sample alpha (HM rejection criteria)
       alpha = runif(1)
+      
+      # Get the density of the last theta
       dens1 = density[k,i-1]
       # dens1 = log.dens.like(Theta[k,,i-1],  
       #                       data)+
       #   prior(Theta[k,,i-1])
-      # print(theta.star)
+      
+      # Compute density of new theta*
       dens2 = log.dens.like(theta.star,  
                             data)+
         prior(theta.star)
@@ -87,12 +117,13 @@ BURNIN=function(N, n.params, K, Theta, log.dens.like, data, prior, mig_prob, par
       }
     }
     print(i)
-    # print(Theta[,,])
   }
   list("Theta"=Theta, "density"=density)
 }
 
-
+# See BURNIN for details
+# does not have migration and 
+# does not compute the difference between the best and current theta
 DEMCMC=function(n, N, n.params, K, Theta, log.dens.like, data, prior){
   accept=0
   for(i in n:N){
@@ -112,9 +143,11 @@ DEMCMC=function(n, N, n.params, K, Theta, log.dens.like, data, prior){
         eps
       # sample alpha
       alpha = runif(1)
-      dens1 = log.dens.like(Theta[k,,i-1],  
-                            data)+
-        prior(Theta[k,,i-1])
+      # Get the density of the last theta
+      dens1 = density[k,i-1]
+      # dens1 = log.dens.like(Theta[k,,i-1],  
+      #                       data)+
+      #   prior(Theta[k,,i-1])
       
       dens2 = log.dens.like(theta.star,  
                             data)+
@@ -137,6 +170,7 @@ DEMCMC=function(n, N, n.params, K, Theta, log.dens.like, data, prior){
   list("Theta"=Theta, "density"=density, "accept"=accept)
 }
 
+# NOT RUN!
 DEMCMCblocked=function(n, N, n.params, K, Theta, log.dens.like, data, prior, block1, block2){
   for(i in n:N){
     # Specify gamma
@@ -211,6 +245,10 @@ DEMCMCblocked=function(n, N, n.params, K, Theta, log.dens.like, data, prior, blo
   list("Theta"=Theta, "density"=density)
 }
 
+# Same as the above DEMCMC
+# But theta* accepts back parts of theta from previous iteration
+# 1-CR = probability of accepting back the parameter from previous theta
+# CR = probability of crossover
 DEMCMCcrossover=function(n, N, n.params, K, Theta, log.dens.like, data, prior, CR){
   accept=0
   for(i in n:N){
@@ -229,7 +267,7 @@ DEMCMCcrossover=function(n, N, n.params, K, Theta, log.dens.like, data, prior, C
                  Theta[mn[2],,i-1])+
         eps
       # Crossover step
-      mut=rbinom(5, size=1, (1-CR))
+      mut=rbinom(n.params, size=1, (1-CR))
       theta.star[mut]=Theta[k,mut,i-1]
       # sample alpha
       alpha = runif(1)
