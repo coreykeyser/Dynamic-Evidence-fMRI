@@ -1,0 +1,144 @@
+library(tidyverse) # Library for quick data manipulation and exploration
+library(here())    # For relative loading of files
+library(doParallel)# For parallel multicore script execution
+library(dqrng)     # For faster RNG 
+library(compiler)  # For compiling R code
+source(here('fast rlcca.R')) # Contains random Leaky Contious Competing 
+                             # Accumulator simulation process
+source(here('pseudolikelihood.r')) # Contains likelihood and prior functions
+source(here("DE Try 2.R"))   # Contains DEMCMC Samplers
+
+# Compile Function to machine code for faster execution
+rlcca <- cmpfun(rlcca)
+
+# Make a cluster for parallel execution
+print("Cluster")
+# 3 is the number of cores
+cl <- makePSOCKcluster(3)
+registerDoParallel(cl)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Get data from experiment
+data=read_csv(here("evidenceAccumulationMaster.csv"))
+
+# Get one subjects data
+sub.name <- "Chris Responses"
+sub.data <- select(data, Trial, Coherence, sub.name)
+colnames(sub.data)[3] <- "response"
+
+# Rename varaibles for later use
+sub.data  <- sub.data %>%
+  mutate(drift1 = ifelse(Coherence>0, Coherence, 0),
+         drift2 = ifelse(Coherence<0, -Coherence, 0),
+         Iter = seq_along(Coherence))
+
+# Extract drifts to use in paramter recovery
+drift = cbind(sub.data$drift1, sub.data$drift2)
+
+# true Params with the estimated parameters first (clear why below)
+true=tibble(
+  L=log(.4),   			# lateral inhibition
+  K=log(.1),				# leakage
+  t0=.15,           # nondecision time
+  xi=1,             # this is xi/sqrt(dt/tau)
+  startx=c(1,1),    # starting point
+  I0=.1,            # ?
+  delta_t=.1,       # change in time constant
+  dt=.1,            # step size
+  maxtime=dim(drift)[1],        # total amount of time before terminating
+  eta = .000001,    # noise added to accumulation process (add more later)
+  n.items = 2,      # number of choices
+  tau = 1000        # some scaling constant (?)
+)
+
+# Get free parameter names and amount
+params=param.names=names(true)[1:3]
+n.params=length(param.names)
+
+print("Make Data")
+obs.data=rlcca(n.items = true$n.items[1], max.time = true$maxtime[1], startx = true$startx, 
+               drift = drift, K = true$K[1], L = true$L[1], eta = true$eta[1], dt = true$dt[1],
+               tau = true$tau[1], t0 = true$t0[1])
+# Extract difference between the accumulators
+obs.data=obs.data[,1]-obs.data[,2]
+
+# Hyper
+# Number of chains
+K=n.params*2+1
+# Length of burnin process
+burnin=2
+# Length of all samples
+N=5
+# Size of proposed dataset in pseudolikelihood
+n.obs = 500
+
+# containers
+density=matrix(NA, K, N)
+Theta=array(NA, dim=c(K,n.params, N))
+dimnames(Theta)[2]=list(param.names)
+
+# Initialize Thetas 
+############
+print("Init")
+# t0=Sys.time()
+log.dens.like=get_log_dens # get likelihood function
+out=initializeChain(Theta, K, density, log.dens.like, data, param.names)
+Theta=out$Theta
+density=out$density
+# t1=Sys.time()
+# InitTime=t1-t0
+
+# burnin 
+############
+print("Burnin")
+# t0=Sys.time()
+mig_prob=.5 # Probability of theta migration at each burnin sample
+out=BURNIN(burnin, n.params, K, Theta, log.dens.like, 
+           data, prior, mig_prob, param.names)
+Theta=out$Theta
+density=out$density
+burnTheta=Theta
+burndensity=density
+# t1=Sys.time()
+# burnTime=t1-t0
+
+
+# Vanilla
+##########
+# Draws posterior samples Turner 2014 (?)
+print("Vanilla")
+# t0=Sys.time()
+out=DEMCMC(n=burnin, N, n.params, K, Theta, log.dens.like, data, prior)
+Theta=out$Theta
+density=out$density
+vanillaTheta=Theta
+vanillaburndensity=density
+# t1=Sys.time()
+# vanillaTime=t1-t0
+
+# Crossover Probabilitically
+###########
+# Draws posterior samples Ter Braak and Vrugt 2006 (?) or 2008 (?)
+print("Crossover")
+# t0=Sys.time()
+Theta=burnTheta
+density=burndensity
+CR=.9 # probability of accepting a mutation
+out=DEMCMCcrossover(n=burnin, N, n.params, K, Theta, log.dens.like, data, prior, CR)
+crossoverTheta=out$Theta
+crossoverdensity=out$density
+# t1=Sys.time()
+# crossTime=t1-t0
+
+# plot theta (remember to exponentiate if appropriate)
+# thisTheta=burnTheta
+# param.names
+# exp(true)
+# ts.plot(t(exp(thisTheta[,"L",])))
+# ts.plot(t(exp(thisTheta[,"K",])))
+# ts.plot(t(exp(thisTheta[,"t0",])))
+
+# Save file for laters
+save.image("Posterior Sample Data.RData")
