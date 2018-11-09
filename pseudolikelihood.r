@@ -9,17 +9,19 @@ pseudolikelihood <- function(data.mx, obs.data, log=TRUE) {
   # Initialize the likelihood vectors to -750 for length of time
   # (so the default likelihood value is exp(-750) which is 
   # approximately zero).
-  like <- rep(-750,times=length(obs.data))
+  like <- rep(-750,times=dim(obs.data)[2])
+  temp <- rep(-750,times=dim(obs.data)[1])
   
   # Compute the likelihood at each time point i
-  for(i in 1:length(obs.data)){
+  for(i in 1:dim(obs.data)[2]){
     # Compute the kernel density estimate
-    dens.1 <- density(data.mx[,i], kernel="epanechnikov",
-                      from=0)
+    dens.1 <- density(data.mx[,i], kernel="epanechnikov")
     # Convert it to a function
     func.1 <- approxfun(dens.1$x,dens.1$y,rule=2)
     # Use the function to compute the likelihood of the observed RTs
-    like[i] <- log(func.1(obs.data[i]))
+    temp <- log(func.1(obs.data[,i]))
+    temp[!is.finite(temp)] <- -750
+    like[i]=sum(temp)
   }
   # If there are any zeros, convert the log to -750
   like[like==-Inf] <- -750
@@ -40,11 +42,16 @@ get_log_dens=function(params, data){
   # Check that proposal is finite
   if(all(is.finite(params))){
     # Container for simulated data
-    sim.data=array(NA, dim=c(n.obs,length(obs.data)))
+    sim.data=matrix(NA, nrow = n.obs, ncol = length(obs.data))
+    # print(params)
+    # for (i in 1:n.obs){
+    #   temp=rlcca(...)
+    #   sim.data[,i]=temp[,1]-temp[,2]
+    # }
     # Simulate datasets for Pseudolike in Parallel
     sim.data=foreach(i=1:n.obs, .combine = rbind, 
                      .export = c("rlcca", "true","drift"), 
-                     .packages = c("dqrng"))%dopar%{
+                     .packages = c("dqrng"))%do%{
                        # Simulate one trial
                        temp=rlcca(n.items = true$n.items[1], max.time = true$maxtime[1], startx = true$startx, 
                                   drift = drift, K = params['K'], L = params['L'], eta = true$eta[1], dt = true$dt[1],
@@ -52,6 +59,7 @@ get_log_dens=function(params, data){
                        # return difference
                        temp[,1]-temp[,2]
                      }
+    # print("Sims Done!")
     # Return pseudolike of observed data under simulated prosposed data
     return(pseudolikelihood(data.mx=sim.data,
                          obs.data=obs.data))
@@ -64,8 +72,8 @@ get_log_dens=function(params, data){
 samplePrior=function(){
   # Use log tranform because these will later be eponentiated
   # This is fairly "tight" which makes the Initialization easier
-  L=log(rnorm(1,.4,1))  # Leak
-  K=log(rnorm(1,.1,1))  # Inhibition
+  L=log(rgamma(1,.4,1))  # Leak
+  K=log(rgamma(1,.1,1))  # Inhibition
   t0=log(rnorm(1,.2,.1))# NonDecision time
   out=tibble(L,K,t0)
 }
@@ -76,7 +84,8 @@ prior=function(params){
   # Note that these are the same distribution as above
   # the exponentiation is used to cancel the log transform to calculate
   # the density under the prior distribution
-  prior=max(dnorm(exp(params["L"]),.4,1,log=TRUE),-750)+
-    max(dnorm(exp(params["K"]),.1,1,log=TRUE),-750)+
-    max(dnorm(exp(params["t0"]),.2,.1,log=TRUE),-750)
+  prior=0
+    # max(dnorm(exp(params["L"]),.4,1,log=TRUE),-750)+
+    # max(dnorm(exp(params["K"]),.1,1,log=TRUE),-750)+
+    # max(dnorm(exp(params["t0"]),.2,.1,log=TRUE),-750)
 }

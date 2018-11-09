@@ -63,7 +63,7 @@ rlcca=function(n.items, max.time, startx, drift, K, L, eta, dt, tau, t0){
         (temp*sqrt_dt_tau)
       
       # make sure not below zero
-      if((x[t,i]) < 0)x[t,i] = 0
+      if((x[t,i]) < 0){x[t,i] = 0}
     }
   }
   # Return states of accumulators only
