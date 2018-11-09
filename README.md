@@ -12,8 +12,8 @@ to update your directory-->'git pull origin'
  
 THE FILES IN THE GITHUB DO NOT INCLUDE THE EXPERIMENTAL SETUP SINCE THAT DOESN'T NEED MANIPULATED BUT IF YOU WANT TO BROWSE IT JUST REACH OUT TO ME AND I CAN GIVE YOU MORE DETAILED INSTRUCTIONS.
  
-FILE GUIDE: the main data source is evidenceAccumulationMaster, this has the coherences for every trial along with the responses for 5 different subjects. "fast rlcca.r" and 'LCCA.r' are the main files for the actual LCA code. 
-[INSERT NOAH EXPLANATION HERE]
+FILE GUIDE: the main data source is evidenceAccumulationMaster, this has the coherences for every trial along with the responses for 5 different subjects. "fast rlcca.r" runs a continuous versiin of the LCA. This is set up to take in a matrix of drift rates for each choice, here right or left. What is returned is a recording tracking of each accumulator through time. This is computed at each step in time by the parameter of the LCA, leak (K), lateral inhibition (L), and a noise term (eta). 
+
  
 fMRI project:
 creating a joint model between behvioral responses in LCA and the BOLD response from fMRI
@@ -21,5 +21,18 @@ creating a joint model between behvioral responses in LCA and the BOLD response 
 Math Psych:
 Strictly adapting, fitting, and performing parameter recovery on the continuous LCA....and maybe more stuff
 1. adapting LCA code for the continuous experiment (done)
-2. determining parameters
+2. determining parameters - What does this mean? Fitting subjects?
 3. performing parameter recovery
+A. Workflow:
+   Extract drift rates from a real experiment (I recommend only one trial)
+   Run LCCA for many trials with the same set of drift rates and one set of parameters
+   Estimate Leak and Lateral Inhibition
+      Use you favourite MLE technique (its already set up for DE via Burnin)
+         Use psuedoliklihood to approximate the likelihood of any potential parameters to fit the observed data (what you generated in step 2)
+   Reapeat over other parameters of leak and lateral inhibition
+   Try to reaoeat again but with non decision time
+   Repeat with eta larger
+   Repeat and try tonfind the least amount of data needed
+   Sample from posterior using vanilla DEMCMC
+         
+   
