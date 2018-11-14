@@ -14,6 +14,14 @@ THE FILES IN THE GITHUB DO NOT INCLUDE THE EXPERIMENTAL SETUP SINCE THAT DOESN'T
  
 FILE GUIDE: the main data source is evidenceAccumulationMaster, this has the coherences for every trial along with the responses for 5 different subjects. "fast rlcca.r" runs a continuous versiin of the LCA. This is set up to take in a matrix of drift rates for each choice, here right or left. What is returned is a recording tracking of each accumulator through time. This is computed at each step in time by the parameter of the LCA, leak (K), lateral inhibition (L), and a noise term (eta). 
 
+Main files:
+DE Try 2.R
+evidenceAccumulationMaster.csv	
+fast rlcca.R
+pseudolikelihood.r
+realdata_track.R
+runDe for DynEv.R
+tracking.R
  
 fMRI project:
 creating a joint model between behvioral responses in LCA and the BOLD response from fMRI
