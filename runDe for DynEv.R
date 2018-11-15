@@ -41,7 +41,8 @@ sub.data  <- sub.data %>%
 
 # Extract drifts to use in paramter recovery
 drift = cbind(sub.data$drift1, sub.data$drift2)
-drift = drift[1:60, ] # I am only running over part of the drift data for computational ease (Parameter Recovery Only)
+# drift = drift[1:125, ] # I am only running over part of the drift data for
+# computational ease (Parameter Recovery Only)
 
 # true Params with the estimated parameters first (clear why below)
 true = tibble(
@@ -75,7 +76,7 @@ drift=drift+true$I0
 params = param.names = names(true)[1:2]
 n.params = length(param.names)
 # Size of proposed dataset in pseudolikelihood
-n.obs = 5000
+n.obs = 500
 
 print("Make Data")
 obs.data = foreach(
@@ -155,10 +156,10 @@ burnTime = t1 - t0
 print("Vanilla")
 t0 = Sys.time()
 out = DEMCMC(n = burnin, N, n.params, K, log.dens.like, data, prior)
-# Theta = out$Theta
-# density = out$density
+Theta = out$Theta
+density = out$density
 vanillaTheta = Theta
-vanillaburndensity = density
+vanilladensity = density
 t1 = Sys.time()
 vanillaTime = t1 - t0
 

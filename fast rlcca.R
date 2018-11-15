@@ -42,7 +42,7 @@ rlcca=function(n.items, max.time, startx, drift, K, L, eta, dt, tau, t0){
   
   for(t in 2:(max.time)){
     # get the sum for the lateral inhibition
-    sumx = 0;
+    sumx = 0
     for(i in 1:(n.items)){
       sumx = x[t-1,i] + sumx
     }
@@ -50,10 +50,10 @@ rlcca=function(n.items, max.time, startx, drift, K, L, eta, dt, tau, t0){
     # loop over items
     for(i in 1:(n.items)){
       # calculate the lateral inhibition
-      lx[i] = sumx - x[t-1,i];
+      lx[i] = sumx - x[t-1,i]
       
       # determine the change in x
-      temp=dqrnorm(n = 1,mean = 0,sd = eta)
+      temp=dqrnorm(n = 1, mean = 0,sd = eta)
       # This is for multinode ("Mutlichoice")
       # x[t,i] = x[t-1,i] +(as.numeric(drift[t,i]) - (K.0)*(x[t-1,i]) - (L.0)*lx[i] - nu/(n.items-1)*sum(drift[t,-i]))*(dt_tau) +(temp*sqrt_dt_tau)
       
@@ -62,8 +62,14 @@ rlcca=function(n.items, max.time, startx, drift, K, L, eta, dt, tau, t0){
         (drift[t,i] - (K.0)*(x[t-1,i]) - (L.0)*lx[i])*(dt_tau) +
         (temp*sqrt_dt_tau)
       
+      x <<- x
       # make sure not below zero
-      if((x[t,i]) < 0)x[t,i] = 0
+      if(!is.finite(x[t,i])){
+        x=NaN
+        return(x)
+        }
+      if(x[t,i] < 0){x[t,i] = 0}
+      # if(!is.finite(x[t,i]) & (x[t,i]) < 0){x[t,i] = 0}
     }
   }
   # Return states of accumulators only

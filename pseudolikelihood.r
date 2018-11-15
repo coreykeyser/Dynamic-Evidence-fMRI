@@ -49,28 +49,26 @@ get_log_dens=function(params, data){
     #   sim.data[,i]=temp[,1]-temp[,2]
     # }
     # Simulate datasets for Pseudolike in Parallel
-    try(
-    sim.data=foreach(i=1:n.obs, .combine = rbind, 
-                     .export = c("rlcca", "true","drift"), 
-                     .packages = c("dqrng"))%do%{
-                       # Simulate one trial
-                       temp=rlcca(n.items = true$n.items[1], max.time = true$maxtime[1], startx = true$startx, 
-                                  drift = drift, K = params['K'], L = params['L'], eta = true$eta[1], dt = true$dt[1],
-                                  tau = true$tau[1], t0 = params['t0'])
-                       # return difference
-                       temp[,1]-temp[,2]
-                     }, silent = F 
-    )
+    sim.data=NULL
+    for(i in 1:n.obs){
+      temp=rlcca(n.items = true$n.items[1], max.time = true$maxtime[1], startx = true$startx, 
+                 drift = drift, K = params['K'], L = params['L'], eta = true$eta[1], dt = true$dt[1],
+                 tau = true$tau[1], t0 = params['t0'])
+      # return difference
+      if(all(is.finite(temp))){
+        sim.data=rbind(sim.data, temp[,1]-temp[,2])
+      }else{return(-Inf)}
+    }
     # print("Sims Done!")
     # Return pseudolike of observed data under simulated prosposed data
     return(pseudolikelihood(data.mx=sim.data,
-                         obs.data=obs.data))
+                            obs.data=obs.data))
   }else{return(-Inf) # If not finite, return worse density possible
-    }
+  }
 }
 
 # Sample a "prior" distribution of the varaible in model
-  # Essentially, this is how likely you think that parameters are
+# Essentially, this is how likely you think that parameters are
 samplePrior=function(){
   # Use log tranform because these will later be eponentiated
   # This is fairly "tight" which makes the Initialization easier
@@ -87,7 +85,7 @@ prior=function(params){
   # the exponentiation is used to cancel the log transform to calculate
   # the density under the prior distribution
   prior=0
-    # max(dnorm(exp(params["L"]),.4,1,log=TRUE),-750)+
-    # max(dnorm(exp(params["K"]),.1,1,log=TRUE),-750)+
-    # max(dnorm(exp(params["t0"]),.2,.1,log=TRUE),-750)
+  # max(dnorm(exp(params["L"]),.4,1,log=TRUE),-750)+
+  # max(dnorm(exp(params["K"]),.1,1,log=TRUE),-750)+
+  # max(dnorm(exp(params["t0"]),.2,.1,log=TRUE),-750)
 }

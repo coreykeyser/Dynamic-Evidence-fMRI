@@ -102,7 +102,7 @@ BURNIN = function(n,
                             data) +
         prior(theta.star)
       # MH step
-      if (is.finite(dens2) & alpha < exp(dens2 - dens1)) {
+      if (is.finite(dens2) & log(alpha) < (dens2 - dens1)) {
         # if accept
         # store theta_k,i <- theta*
         # print("accept")
@@ -165,7 +165,7 @@ DEMCMC = function(n,
                             data) +
         prior(theta.star)
       # MH step
-      if (alpha < exp(dens2 - dens1)) {
+      if (is.finite(dens2) & log(alpha) < (dens2 - dens1)) {
         # if accept
         # store theta_k,i <- theta*
         Theta[k, , i] <- theta.star
